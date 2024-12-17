@@ -3,11 +3,11 @@
 #include "user.h"
 #include "param.h"
 
+
 // Memory allocator by Kernighan and Ritchie,
 // The C programming Language, 2nd ed.  Section 8.7.
 
 typedef long Align;
-
 union header {
   struct {
     union header *ptr;
@@ -25,13 +25,13 @@ void
 free(void *ap)
 {
   Header *bp, *p;
-
-  Header *tempap = (Header*) ap;
-  int nbytes=((tempap->s.size-1)*sizeof(Header)+1)-sizeof(Header);
-  printf(1, "free: nbytes -> %d\n", nbytes);
-  memuse(-nbytes);
-
   bp = (Header*)ap - 1;
+
+  int size = bp->s.size * sizeof(Header);
+  if (size != 32768) {
+    increase_mem_usage(-size);
+  }
+
   for(p = freep; !(bp > p && bp < p->s.ptr); p = p->s.ptr)
     if(p >= p->s.ptr && (bp > p || bp < p->s.ptr))
       break;
@@ -68,14 +68,22 @@ morecore(uint nu)
 void*
 malloc(uint nbytes)
 {
-  if(memuse(nbytes) < 0){
-    printf(1, "malloc: allocation not possible\n");
-    return 0;
-  }
-  printf(1, "malloc: allocation possible\n");
-
   Header *p, *prevp;
   uint nunits;
+
+
+  // Check if the memory that is going to be allocated is
+  // bigger than the maximum size limit of a process
+  int memory_limit = get_mem_limit();
+  int memory_usage = get_mem_usage();
+
+  if (memory_limit != -1  && memory_usage + nbytes > memory_limit) {
+    printf(2, "Memory limit exceeded, memory_limit: %d, memory_usage: %d, memory requested: %d\n", memory_limit, memory_usage, nbytes);
+    return 0;
+  }
+
+  // Increase the memory usage of the process (there is enough memory)
+  increase_mem_usage(nbytes);
 
   nunits = (nbytes + sizeof(Header) - 1)/sizeof(Header) + 1;
   if((prevp = freep) == 0){
@@ -92,15 +100,10 @@ malloc(uint nbytes)
         p->s.size = nunits;
       }
       freep = prevp;
-      printf(1, "malloc: allocated memory %d\n", p->s.size);
       return (void*)(p + 1);
     }
     if(p == freep)
       if((p = morecore(nunits)) == 0)
-        // we have already allocated nbytes to the process so if at the end we could not allocate that much 
-        // of memory we need to update the mem_used of process
-        printf(1, "allocation failed");
-        memuse(-nbytes);
         return 0;
   }
 }

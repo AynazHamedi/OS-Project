@@ -91,38 +91,99 @@ sys_uptime(void)
 }
 
 int
-sys_cpulim(void)
+sys_set_cpu_limit(void)
 {
-  int cpu_lim, mem_lim;
-  if(argint(0, &cpu_lim) < 0 || argint(1, &mem_lim) < 0){
-    return -1;
-  }
+  int limit;
+  struct proc *p = myproc();
 
-  if(cpu_lim > 1000 || cpu_lim < 0){
+  if(argint(0, &limit) < 0)
     return -1;
-  }
 
-  if(mem_lim < 0){
-    return -1;
-  }
+  // TODO: This might need to be atomic?
+  myproc()->cpu_limit = limit;
 
-  cpu_time_limit = cpu_lim;
-  mem_limit = mem_lim;
+  cprintf("Limit set to %d\n", limit);
   return 0;
 }
 
-int 
-sys_memuse(void){
-  int amount;
-  if(argint(0, &amount) < 0){
+int
+sys_set_mem_limit(void)
+{
+  int limit;
+  struct proc *p = myproc();
+
+  if(argint(0, &limit) < 0)
     return -1;
+  
+  p->memory_limit = limit;
+
+  return 0;
+}
+
+int
+sys_get_mem_limit(void)
+{
+  struct proc *p = myproc();
+
+  return p->memory_limit;
+}
+
+int
+sys_increase_mem_limit(void)
+{
+  int limit;
+  struct proc *p = myproc();
+
+  if(argint(0, &limit) < 0)
+    return -1;
+
+  p->memory_limit += limit;
+
+  return 0;
+}
+
+int
+sys_increase_mem_usage(void)
+{
+  int usage;
+  struct proc *p = myproc();
+
+  if(argint(0, &usage) < 0)
+    return -1;
+
+  // Don't increase memory usage if the process is sh
+  if (memcmp(p->name, "sh", 2) == 0) {
+    cprintf("ignored sh shell memory usage increase\n");
+    return 0;
   }
 
+  p->memory_used += usage;
+  cprintf("Memory usage increased by %d, from process: %s\n", usage, p->name);
+
+  return 0;
+}
+
+int
+sys_get_mem_usage(void)
+{
   struct proc *p = myproc();
-  int new_amount = p->mem_used + amount;
-  if(new_amount < 0 || new_amount > mem_limit){
+
+  return p->memory_used;
+}
+
+int
+sys_set_limit(void)
+{
+  int cpu_limit, mem_limit;
+  struct proc *p = myproc();
+
+  if(argint(0, &cpu_limit) < 0)
     return -1;
-  }
-  p->mem_used += amount;
+  if(argint(1, &mem_limit) < 0)
+    return -1;
+
+  p->cpu_limit = cpu_limit;
+  p->memory_limit = mem_limit;
+
   return 0;
 }

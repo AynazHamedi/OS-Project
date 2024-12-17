@@ -120,8 +120,6 @@ void            userinit(void);
 int             wait(void);
 void            wakeup(void*);
 void            yield(void);
-extern uint     cpu_time_limit;
-extern uint     mem_limit;
 
 // swtch.S
 void            swtch(struct context**, struct context*);

@@ -20,9 +20,6 @@ extern void trapret(void);
 
 static void wakeup1(void *chan);
 
-uint cpu_time_limit = 500; // in miliseconds
-uint mem_limit = 16*1024*1024; // in bytes
-
 void
 pinit(void)
 {
@@ -91,8 +88,10 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
-  p->cpu_used = 0;
-  p->mem_used = 0;
+  p->cpu_limit = 100; // Default CPU limit is 100%
+  p->cpu_ticks = 0; // Initialize CPU ticks used in the last second
+  p->memory_limit = -1; // Default memory limit is unlimited
+  p->memory_used = 0; // Initialize memory used so far
 
   release(&ptable.lock);
 
@@ -324,83 +323,77 @@ wait(void)
 //  - swtch to start running that process
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
+
+void
+reset_CPU_ticks(void)
+{
+  struct proc *p;
+  acquire(&ptable.lock);
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    p->cpu_ticks = 0;
+  }
+  release(&ptable.lock);
+}
+
 void
 scheduler(void)
 {
+  int ran;
   struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
-  uint last_reset_time = 0;
   
   for(;;){
     // Enable interrupts on this processor.
     sti();
 
-    // Acquire tick lock only when necessary to reset CPU usage after a period.
-    // acquire(&tickslock);
-    if (ticks - last_reset_time >= 100) {
-        // cprintf("tick reset at tick %d\n", ticks);
-        last_reset_time = ticks;
-        // release(&tickslock);
-
-        // Reset cpu_used for all processes
-        acquire(&ptable.lock); // Lock ptable before accessing process table
-        for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-            p->cpu_used = 0; // Reset CPU usage for all processes
-        }
-        release(&ptable.lock); // Release ptable lock after processing
-    } 
-    // else {
-        // release(&tickslock);
+    // if (ticks % 100 == 0) {
+    //   // cprintf("Current second: %d, resetting ticks...\n", ticks);
+    //   reset_CPU_ticks();
     // }
-    // cprintf("helllo this is ticks %d\n", ticks);
+
+    ran = 0;
 
     // Loop over process table looking for process to run.
-    acquire(&ptable.lock); // Lock ptable before accessing process table
-    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-      if (p->state != RUNNABLE) {
+    acquire(&ptable.lock);
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->state != RUNNABLE)
+        continue;
+
+      // Check if the process has exceeded its CPU limit
+      if(p->cpu_limit < p->cpu_ticks) {
+        // cprintf("Process %d exceeded its CPU limit\n", p->pid);
+        // cprintf("Process limit: %d, Process ticks: %d\n", p->cpu_limit, p->cpu_ticks);
         continue;
       }
 
-      // Skip process if it exceeds the CPU usage limit
-      // cprintf("process %d: cpu_used up to now %d\n", p->pid, p->cpu_used);
+      ran = 1;
 
-      if (p->cpu_used > cpu_time_limit) {
-        // if(ticks % 10 == 0){
-        //   cprintf("process %d: skipped\n", p->pid);
-        // }
-        continue;
-      }
-      // cprintf("process %d: running\n", p->pid);
-      
-      // Track CPU time used for the process during execution
-      // acquire(&tickslock);
-      uint start_tick = ticks;
-      // cprintf("tick at start %d\n", start_tick);
-      // release(&tickslock);
 
-      // Switch to the chosen process
+      // Switch to chosen process.  It is the process's job
+      // to release ptable.lock and then reacquire it
+      // before jumping back to us.
       c->proc = p;
       switchuvm(p);
       p->state = RUNNING;
+      p->cpu_ticks += 1;
+
+      // cprintf("Current tick: %d\n", ticks);
 
       swtch(&(c->scheduler), p->context);
       switchkvm();
 
-      // acquire(&tickslock);
-      uint end_tick = ticks;
-      // cprintf("tick at end %d\n", end_tick);
-      
-      // release(&tickslock);
-
-      // Calculate CPU usage (increment by elapsed ticks)
-      p->cpu_used += (end_tick - start_tick) * 10;
-
       // Process is done running for now.
+      // It should have changed its p->state before coming back.
       c->proc = 0;
     }
-    release(&ptable.lock); // Release ptable lock when done
+    release(&ptable.lock);
 
+    // halt the cpu if there is no process to run
+    // this makes the cpu usage on the host machine to be lower
+    if (!ran) {
+      hlt();
+    }
   }
 }
 

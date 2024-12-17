@@ -103,8 +103,12 @@ extern int sys_unlink(void);
 extern int sys_wait(void);
 extern int sys_write(void);
 extern int sys_uptime(void);
-extern int sys_cpulim(void);
-extern int sys_memuse(void);
+extern int sys_set_cpu_limit(void);
+extern int sys_set_mem_limit(void);
+extern int sys_get_mem_limit(void);
+extern int sys_increase_mem_limit(void);
+extern int sys_increase_mem_usage(void);
+extern int sys_get_mem_usage(void);
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -128,8 +132,12 @@ static int (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
-[SYS_cpulim]  sys_cpulim,
-[SYS_memuse]  sys_memuse,
+[SYS_set_cpu_limit] sys_set_cpu_limit,
+[SYS_set_mem_limit] sys_set_mem_limit,
+[SYS_get_mem_limit] sys_get_mem_limit,
+[SYS_increase_mem_limit] sys_increase_mem_limit,
+[SYS_increase_mem_usage] sys_increase_mem_usage,
+[SYS_get_mem_usage] sys_get_mem_usage,
 };
 
 void
